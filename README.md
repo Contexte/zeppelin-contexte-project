@@ -13,9 +13,13 @@ Then, the JDBC interpreter should show up in your "Interpreter" tab while runnin
 ## Copy the notes
 
 1) Start zeppelin (./bin/zeppelin-daemon.sh start)
+
 2) Create a new notebook and get its name AND ID
+
 3) Replace the note.json of your newly created notebook by the one from this repo
+
 4) Replace, at the end of the note.js, the name and ID of the notebook. Make it match the new one.
+
 5) Restart Zeppelin.
 
 ## Chunks of code
