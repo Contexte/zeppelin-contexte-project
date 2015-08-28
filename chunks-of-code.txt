@@ -1,0 +1,1130 @@
+%dep
+z.load("./mysql-connector-java-5.1.34.jar")
+--
+val editorial = sqlContext.load("jdbc", Map("url" -> "jdbc:mysql://localhost:3306/contexte_p_dev?user=root", "dbtable" -> "editorials_editorial"))
+val position = sqlContext.load("jdbc", Map("url" -> "jdbc:mysql://localhost:3306/contexte_p_dev?user=root", "dbtable" -> "editorials_position"))
+val position_organization = sqlContext.load("jdbc", Map("url" -> "jdbc:mysql://localhost:3306/contexte_p_dev?user=root", "dbtable" -> "editorials_position_organizations"))
+val users_organization = sqlContext.load("jdbc", Map("url" -> "jdbc:mysql://localhost:3306/contexte_p_dev?user=root", "dbtable" -> "users_organization"))
+//Here we rename the id column and select some in particular
+val subjects = sqlContext.load("jdbc", Map("url" -> "jdbc:mysql://localhost:3306/contexte_p_dev?user=root", "dbtable" -> "structures_category")).select("id", "name", "slug", "parent_id").withColumnRenamed("id", "subject_id").withColumnRenamed("name", "subject_name")
+val editorial_secondary_subject = sqlContext.load("jdbc", Map("url" -> "jdbc:mysql://localhost:3306/contexte_p_dev?user=root", "dbtable" -> "editorials_editorial_secondary_categories")).select("editorial_id", "category_id").withColumnRenamed("category_id", "secondary_subject_id")
+--
+// getting everything set up to have now date in the right format.
+import java.util.Calendar
+import java.text.SimpleDateFormat
+val later_date_format = new SimpleDateFormat("y-MM-dd hh:mm:ss.0")
+--
+/*A
+
+BASICS
+
+For each table created, on which we want to request, we have 3 steps :
+
+    - Creating the table by writing the query in scala
+    - Putting the table in cache (optionnaly, we also can store the new cached table in a varibale on which the prefix "cached_" is added)
+    - Counting the number of row in the new cached var. It helps putting the tables in cache properly, since Zeppelin is doing lazy queries otherwise.
+    
+We have to do these 3 steps in 3 different pieces of note for them to be efficient.
+
+As we're building tables on previous tables, these steps require a lot of notes, but I haven't found any way for them to be quicker.
+
+*/
+
+val simple_positions = editorial.join(
+                                    position
+                                
+                ).where(
+                                    $"id" === $"editorial_ptr_id"
+                                
+                       ).where(
+                                    $"status" === "published"    
+                                
+                              ).select(
+                                    "id",
+                                    "title",
+                                    "primary_category_id",
+                                    "publication_date"
+                                
+                                    ).withColumnRenamed(
+                                    "id",
+                                    "position_id"
+                                
+                                    ).withColumnRenamed(
+                                    "primary_category_id",
+                                    "primary_subject_id"
+                                
+                                            )
+
+                                    val simple_primary_subject_organization_positions = simple_positions.join/*THIS : position_id, title, primary_subject_id, status*/(
+                                    subjects
+                                
+                                    ).where(
+                                    $"primary_subject_id" === $"subject_id"   
+                                
+                                    ).select(
+                                    "position_id",
+                                    "title",
+                                    "subject_id",
+                                    "subject_name",
+                                    "publication_date",
+                                    "parent_id"
+                                
+                                    ).join/*THIS : position_id, title, primary_subject_id, status, subject_name, subject_id*/(
+                                            position_organization.select(
+                                        "position_id",
+                                        "organization_id"
+                                    
+                                        ).join(
+                                        users_organization    
+                                    
+                                        ).where(
+                                        $"organization_id" === $"id"    
+                                    
+                                        ).select(
+                                        "position_id",
+                                        "organization_id",
+                                        "name"
+                                    
+                                        ).withColumnRenamed(
+                                        "name",
+                                        "organization_name"
+                                    
+                                        ).withColumnRenamed(
+                                        "position_id",
+                                        "position_id_in_organization"    
+                                    
+                                                )
+                                
+                                        ).where(
+                                    $"position_id" === $"position_id_in_organization"    
+                                
+                                    ).select(
+                                    "publication_date",
+                                    "title",
+                                    "subject_name",
+                                    "organization_name",
+                                    "position_id",
+                                    "subject_id",
+                                    "organization_id",
+                                    "parent_id"
+                                
+                                    ).sort(
+                                    $"publication_date".desc
+                                
+                                          )
+
+
+                                    val simple_secondary_subject_organization_positions = simple_positions.join/*THIS : position_id, title, primary_subject_id, status*/(
+                                                    subjects/*subject_id, subject_name, slug*/.join(
+                                            editorial_secondary_subject
+                                        
+                                            ).where(
+                                            $"subject_id" === $"secondary_subject_id"    
+                                        
+                                                   )
+                                
+                                                    ).where(
+                                    $"editorial_id" === $"position_id"    
+                                
+                                    ).select(
+                                    "position_id",
+                                    "title",
+                                    "subject_id",
+                                    "subject_name",
+                                    "publication_date",
+                                    "parent_id"
+                                
+                                    ).join/*THIS : position_id, title, primary_subject_id, status, subject_name, subject_id*/(
+                                            position_organization.select(
+                                        "position_id",
+                                        "organization_id"
+                                    
+                                        ).join(
+                                        users_organization    
+                                    
+                                        ).where(
+                                        $"organization_id" === $"id"    
+                                    
+                                        ).select(
+                                        "position_id",
+                                        "organization_id",
+                                        "name"
+                                    
+                                        ).withColumnRenamed(
+                                        "name",
+                                        "organization_name"
+                                    
+                                        ).withColumnRenamed(
+                                        "position_id",
+                                        "position_id_in_organization"    
+                                    
+                                                )
+                                
+                                        ).where(
+                                    $"position_id" === $"position_id_in_organization"    
+                                
+                                    ).select(
+                                    "publication_date",
+                                    "title",
+                                    "subject_name",
+                                    "organization_name",
+                                    "position_id",
+                                    "subject_id",
+                                    "organization_id",
+                                    "parent_id"
+                                
+                                    ).sort(
+                                    $"publication_date".desc
+                                
+                                          )
+
+
+
+
+// Put the table determining which organizations really are on position in cache
+// Used in the new block
+                                    val organizations_on_position = users_organization.join(
+                                    position_organization
+                                    .select(
+                                        "organization_id"
+                                    
+                                           )
+                                    .distinct
+                                
+                                    ).where(
+                                    users_organization.col("id") === $"organization_id"
+                                
+                                    ).orderBy(
+                                    "name"
+                                
+                                            )
+--
+val cached_simple_primary_subject_organization_positions = simple_primary_subject_organization_positions.cache()
+val cached_simple_secondary_subject_organization_positions = simple_secondary_subject_organization_positions.cache()
+--
+cached_simple_primary_subject_organization_positions.count()
+cached_simple_secondary_subject_organization_positions.count()
+--
+// Return a dataframe containing positions with their subject_name replace by their subject's parent subject_name and parent_id's replaced by their subject's parent parent_id.
+// This function is used to create new positions for each position with a parent_id. This new position will have the same title, but another subject_name (the one of its parent) 
+// and another parent_id (the one of its parent)
+def getPositionsAsParentSubjectPositions(df:org.apache.spark.sql.DataFrame):org.apache.spark.sql.DataFrame = {
+        return df.join(
+                        subjects.select(
+                "subject_name",
+                "subject_id",
+                "parent_id"
+            
+                ).withColumnRenamed(
+                "subject_name",
+                "next_floor_subject_name"
+            
+                ).withColumnRenamed(
+                "subject_id",
+                "next_floor_subject_id"
+            
+                ).withColumnRenamed(
+                "parent_id",
+                "next_floor_parent_id"
+            
+                        )
+        
+                      ).where(
+            $"parent_id" === $"next_floor_subject_id"
+        
+            ).select(
+            "publication_date",
+            "title",
+            "next_floor_subject_name",
+            "organization_name",
+            "position_id",
+            "next_floor_subject_id",
+            "organization_id",
+            "next_floor_parent_id"
+        
+            ).withColumnRenamed(
+            "next_floor_subject_name",
+            "subject_name"    
+        
+            ).withColumnRenamed(
+            "next_floor_subject_id",
+            "subject_id"    
+        
+            ).withColumnRenamed(
+            "next_floor_parent_id",
+            "parent_id"
+        
+                    )
+
+}
+--
+// Getting the positions which have a subject with a parent subject with this parent subject and its parent id
+// It will happen 4 times, since we have 5 levels in the tree
+val first_floor_simple_primary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_simple_primary_subject_organization_positions).cache()
+val first_floor_simple_secondary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_simple_secondary_subject_organization_positions).cache()
+--
+val cached_first_floor_simple_primary_subject_organization_positions = first_floor_simple_primary_subject_organization_positions.cache()
+val cached_first_floor_simple_secondary_subject_organization_positions = first_floor_simple_secondary_subject_organization_positions.cache()
+--
+cached_first_floor_simple_primary_subject_organization_positions.count()
+cached_first_floor_simple_secondary_subject_organization_positions.count()
+--
+// Here, we are getting the parent subject of the first floor. Accessing to the second floor.
+val second_floor_simple_primary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_first_floor_simple_primary_subject_organization_positions)
+val second_floor_simple_secondary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_first_floor_simple_secondary_subject_organization_positions)
+--
+val cached_second_floor_simple_primary_subject_organization_positions = second_floor_simple_primary_subject_organization_positions.cache()
+val cached_second_floor_simple_secondary_subject_organization_positions = second_floor_simple_secondary_subject_organization_positions.cache()
+--
+cached_second_floor_simple_primary_subject_organization_positions.count()
+cached_second_floor_simple_secondary_subject_organization_positions.count()
+--
+val third_floor_simple_primary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_second_floor_simple_primary_subject_organization_positions).cache()
+val third_floor_simple_secondary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_second_floor_simple_secondary_subject_organization_positions).cache()
+--
+val cached_third_floor_simple_primary_subject_organization_positions = third_floor_simple_primary_subject_organization_positions.cache()
+val cached_third_floor_simple_secondary_subject_organization_positions = third_floor_simple_secondary_subject_organization_positions.cache()
+--
+third_floor_simple_primary_subject_organization_positions.count()
+third_floor_simple_secondary_subject_organization_positions.count()
+--
+val forth_floor_simple_primary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_third_floor_simple_primary_subject_organization_positions)
+val forth_floor_simple_secondary_subject_organization_positions = getPositionsAsParentSubjectPositions(cached_third_floor_simple_secondary_subject_organization_positions)
+--
+val cached_forth_floor_simple_primary_subject_organization_positions = forth_floor_simple_primary_subject_organization_positions.cache()
+val cached_forth_floor_simple_secondary_subject_organization_positions = forth_floor_simple_secondary_subject_organization_positions.cache()
+--
+cached_forth_floor_simple_primary_subject_organization_positions.count()
+cached_forth_floor_simple_secondary_subject_organization_positions.count()
+--
+// Creating the two final dataframes, containing every positions, with their subject on every floor 
+// (a same position, with only 1 subject, can be in it several times, depending of how deep was its subject in the subject tree)
+val primary_subject_organization_positions = simple_primary_subject_organization_positions.unionAll(
+                cached_first_floor_simple_primary_subject_organization_positions.unionAll(
+                        cached_second_floor_simple_primary_subject_organization_positions.unionAll(
+                                cached_third_floor_simple_primary_subject_organization_positions.unionAll(
+                                                cached_forth_floor_simple_primary_subject_organization_positions
+                                            
+                                        )
+                                        
+                                )
+                                    
+                        )
+                                
+                )
+val secondary_subject_organization_positions = simple_secondary_subject_organization_positions.unionAll(
+                cached_first_floor_simple_secondary_subject_organization_positions.unionAll(
+                        cached_second_floor_simple_secondary_subject_organization_positions.unionAll(
+                                cached_third_floor_simple_secondary_subject_organization_positions.unionAll(
+                                                cached_forth_floor_simple_secondary_subject_organization_positions
+                                            
+                                        )
+                                        
+                                )
+                                    
+                        )
+                                
+                )
+
+--
+val cached_primary_subject_organization_positions = primary_subject_organization_positions.cache()
+val cached_secondary_subject_organization_positions = secondary_subject_organization_positions.cache()
+--
+cached_primary_subject_organization_positions.count()
+cached_secondary_subject_organization_positions.count()
+--
+// Creating the final table, with an union between the primary and secondary subject tables.
+val full_subject_organization_positions =  cached_primary_subject_organization_positions.unionAll(
+                                    cached_secondary_subject_organization_positions
+                                
+                ).sort(
+                                    $"publication_date".desc
+                                
+                      )
+--
+val cached_full_subject_organization_positions = full_subject_organization_positions.cache()
+--
+cached_full_subject_organization_positions.count()
+--
+%md ## Date à partir de laquelle les positions sont considérées. 
+#### Une fois la date renseignée, il est nécessaire de relancer toutes les notes suivant celle-ci, dans l'ordre, pour que la nouvelle période de temps soit prise en compte.
+--
+// Filtering the full-positions world by date
+// It's quicker ( in case of date-change  ) and more versatile to do it here than in the very begining
+
+var earlier_date_filter = z.input("Plus vieille date de publication", "2015-01-01 00:00:00.0")
+
+val date_filtered_full_subjects_organization_positions = full_subject_organization_positions.filter(
+                                    "publication_date > '" + earlier_date_filter + "'"
+                                
+                )
+                                
+val date_filtered_primary_subjects_organization_positions = primary_subject_organization_positions.filter(
+                                    "publication_date > '" + earlier_date_filter + "'"
+                                
+                )
+--
+val cached_date_filtered_full_subjects_organization_positions = date_filtered_full_subjects_organization_positions
+val cached_date_filtered_primary_subjects_organization_positions = date_filtered_primary_subjects_organization_positions
+--
+cached_date_filtered_full_subjects_organization_positions.count()
+cached_date_filtered_primary_subjects_organization_positions.count()
+--
+// Creating 3 new tables. 2 For positions aggregated by their subject name (1 for full subjects, 1 for primary subjects), and 1 for positions with organization
+val grouped_positions_by_primary_subjects = cached_date_filtered_primary_subjects_organization_positions.select(
+        "title",
+        "subject_name"
+    
+        ).distinct.groupBy(
+        $"subject_name"    
+    
+                ).count().orderBy($"count".desc)
+    
+        val grouped_positions_by_full_subjects = cached_date_filtered_full_subjects_organization_positions.select(
+        "title",
+        "subject_name"
+    
+        ).distinct.groupBy(
+        $"subject_name"
+    
+                ).count().orderBy($"count".desc)
+    
+        val grouped_positions_by_organizations = cached_date_filtered_primary_subjects_organization_positions.select(
+        "title",
+        "organization_name"
+    
+        ).distinct.groupBy(
+        $"organization_name"    
+    
+                ).count().orderBy($"count".desc)
+--
+// Put these tables into cache
+val cached_grouped_positions_by_primary_subjects = grouped_positions_by_primary_subjects.cache()
+val cached_grouped_positions_by_full_subjects = grouped_positions_by_full_subjects.cache()
+val cached_grouped_positions_by_organizations = grouped_positions_by_organizations.cache()
+--
+cached_grouped_positions_by_primary_subjects.count()
+cached_grouped_positions_by_full_subjects.count()
+cached_grouped_positions_by_organizations.count()
+--
+// Creating two new tables, aggregating subjects and organizations
+// These tables aim to show the realtions between subjects and organizations
+val full_subject_and_organization = cached_date_filtered_full_subjects_organization_positions.groupBy(
+    "organization_name",
+    "subject_name",
+    "organization_id",
+    "subject_id"
+
+    ).agg(
+    $"organization_name",
+    $"subject_name",
+    $"organization_id",
+    $"subject_id"
+
+         )
+
+    val primary_subject_and_organization = cached_date_filtered_primary_subjects_organization_positions.groupBy(
+    "organization_name",
+    "subject_name",
+    "organization_id",
+    "subject_id"
+
+    ).agg(
+    $"organization_name",
+    $"subject_name",
+    $"organization_id",
+    $"subject_id"
+
+         )
+--
+// Put these two tables, of relation between suubject and organizations, in cache
+val cached_full_subject_and_organization = full_subject_and_organization.cache()
+val cached_primary_subject_and_organization = primary_subject_and_organization.cache()
+--
+cached_full_subject_and_organization.count()
+cached_primary_subject_and_organization.count()
+--
+// Tables to get subjects grouped by organizations.
+val full_subject_grouped_by_organization = full_subject_and_organization.groupBy(
+    "organization_name"    
+
+                ). count()
+
+val primary_subject_grouped_by_organization = primary_subject_and_organization.groupBy(
+    "organization_name"    
+
+                ). count()
+--
+val cached_full_subject_grouped_by_organization = full_subject_grouped_by_organization.cache()
+val cached_primary_subject_grouped_by_organization = primary_subject_grouped_by_organization.cache()
+--
+cached_full_subject_grouped_by_organization.count()
+cached_primary_subject_grouped_by_organization.count()
+--
+// Making two new tables, to explicit the relations between organizations.
+// It creates a table by joining the tbales of subjects and organizations with herself, where the subjects_id are the same, but not the organization names.
+// This way, we have a table of organizations expressing on the same subjects.
+
+// Full subjects
+val full_subject_organizations_relation = cached_full_subject_and_organization.join(
+                cached_full_subject_and_organization.select(
+        "subject_id",
+        "organization_name",
+        "organization_id"
+    
+        ).withColumnRenamed(
+        "organization_name",
+        "s_organization_name"
+    
+        ).withColumnRenamed(
+        "subject_id",
+        "s_subject_id"    
+    
+        ).withColumnRenamed(
+        "organization_id",
+        "s_organization_id"    
+    
+                )
+
+                ).where(
+    $"subject_id" === $"s_subject_id"
+
+    ).where(
+    $"organization_name" !== $"s_organization_name"
+
+    ).select(
+    "organization_name",
+    "subject_name",
+    "s_organization_name",
+    "subject_id",
+    "organization_id",
+    "s_organization_id"
+
+            )
+
+// Only primary subjects
+    val primary_subject_organizations_relation = cached_primary_subject_and_organization.join(
+                    cached_primary_subject_and_organization.select(
+        "subject_id",
+        "organization_name",
+        "organization_id"
+    
+        ).withColumnRenamed(
+        "organization_name",
+        "s_organization_name"
+    
+        ).withColumnRenamed(
+        "subject_id",
+        "s_subject_id"    
+    
+        ).withColumnRenamed(
+        "organization_id",
+        "s_organization_id"    
+    
+                )
+
+                    ).where(
+    $"subject_id" === $"s_subject_id"
+
+    ).where(
+    $"organization_name" !== $"s_organization_name"
+
+    ).select(
+    "organization_name",
+    "subject_name",
+    "s_organization_name",
+    "subject_id",
+    "organization_id",
+    "s_organization_id"
+
+            )
+--
+val cached_full_subject_organizations_relation = full_subject_organizations_relation.cache()
+val cached_primary_subject_organizations_relation = primary_subject_organizations_relation.cache()
+--
+cached_full_subject_organizations_relation.count()
+cached_primary_subject_organizations_relation.count()
+--
+// Table aiming to do the mirror of the last one, by matching organization names where the subjects names are not the same.
+// This way, we have a table of subjects linked by an organization, which expressed on them both.
+val organization_linked_full_subjects_relation = cached_full_subject_and_organization.select(
+    "subject_name",
+    "organization_name"
+    
+    ).withColumnRenamed(
+        "organization_name",
+        "first_organization_name"
+    
+        ).withColumnRenamed(
+        "subject_name",
+        "first_subject_name"
+    
+        ).join(
+                cached_full_subject_and_organization.select(
+            "subject_name",
+            "organization_name"
+        
+                        )
+    
+              ).where(
+        $"first_organization_name" === $"organization_name"
+    
+        ).where(
+        $"first_subject_name" !== $"subject_name"  
+    
+               )
+    
+ // Same with primary subjects 
+        val organization_linked_primary_subjects_relation = cached_primary_subject_and_organization.select(
+    "subject_name",
+    "organization_name"
+    
+    ).withColumnRenamed(
+        "organization_name",
+        "first_organization_name"
+    
+        ).withColumnRenamed(
+        "subject_name",
+        "first_subject_name"
+    
+        ).join(
+                cached_primary_subject_and_organization.select(
+            "subject_name",
+            "organization_name"
+        
+                        )
+    
+              ).where(
+        $"first_organization_name" === $"organization_name"
+    
+        ).where(
+        $"first_subject_name" !== $"subject_name"  
+    
+               )
+--
+var cached_organization_linked_full_subjects_relation = organization_linked_full_subjects_relation.cache()
+var cached_organization_linked_primary_subjects_relation = organization_linked_primary_subjects_relation.cache()
+--
+cached_organization_linked_full_subjects_relation.count()
+cached_organization_linked_primary_subjects_relation.count()
+--
+// This function is used to display the results of a query, returning several rows, into the shape of a table
+def makeTable(df:org.apache.spark.sql.DataFrame) : Unit = {
+    println("%table")
+    //Create the HeadString
+            df.toString().drop(1).dropRight(1).split(", ").foreach(
+                            cell => {
+            var counter = 0 ; 
+            (
+                cell.split(": ")
+                .foreach(
+                        data => {
+                        if(counter%2 == 0) 
+                        {print("\t" + data)} ; 
+                        counter+=1
+                    
+                        }
+                
+                        )
+            
+            )
+        
+                            }
+    
+                            )
+    val arrays = df.collect()
+    arrays.foreach(array => {print("\n") ; (array.toSeq.foreach(cell_data => (print("\t" + cell_data.toString()))))})
+
+}
+--
+%md ## Filtrer par sujets primaires, ou tous les sujets indistinctement ?
+Pour la suite du document, veuillez choisir si vous souhaitez n'avoir que les données concernant les sujets primais des positions, ou tous els sujets (primaires et secondaires)
+
+Le nombre de réponses Max affecte unqiueemnt les tableaux affichés et le nombre de lignes qu'ils contiendront.
+--
+var max_number_of_answers = z.input("Nombre de réponses Max : ", 50).toString.toInt
+
+// Subject range, primary or full subjects
+var subject_range = z.select("Intéressé(e) par :", Seq(
+                                                        ("full", "Tous les sujets, primaires et secondaires"),
+                                                        ("primary_only", "Seulement les sujets primaires")
+                                                    
+                        )).toString()
+
+// Function made up to return the right table
+def returnTableFromSubjectRange(table_type:String):org.apache.spark.sql.DataFrame = {
+        if(subject_range == "full"){
+                table_type match {
+            case "Unfiltered positions" => return full_subject_organization_positions
+            case "Date filtered positions" => return date_filtered_full_subjects_organization_positions
+            case "Positions grouped by subjects" => return cached_grouped_positions_by_full_subjects
+            case "Positions grouped by organizations" => return cached_grouped_positions_by_organizations
+            case "Subject and organization" => return cached_full_subject_and_organization
+            case "Subjects grouped by organizations" => return cached_full_subject_grouped_by_organization
+            case "Organizations relation" => return  cached_full_subject_organizations_relation
+            case "Subject relation" => return organization_linked_full_subjects_relation
+        
+                }
+    
+        }else{
+                table_type match {
+            case "Unfiltered positions" => return primary_subject_organization_positions
+            case "Date filtered positions" => return date_filtered_primary_subjects_organization_positions
+            case "Positions grouped by subjects" => return cached_grouped_positions_by_primary_subjects
+            case "Positions grouped by organizations" => return cached_grouped_positions_by_organizations
+            case "Subject and organization" => return cached_primary_subject_and_organization
+            case "Subjects grouped by organizations" => return cached_primary_subject_grouped_by_organization
+            case "Organizations relation" => return  cached_primary_subject_organizations_relation
+            case "Subject relation" => return organization_linked_primary_subjects_relation
+        
+                }
+    
+        }
+
+}
+--
+%md ## 1.Nombre de positions enregistrées après la date donnée.
+--
+println(
+                simple_positions.where(
+        $"publication_date" > earlier_date_filter   
+    
+                        ).count()
+
+       )
+--
+//Functions made as filters
+
+// Filter by organization name if one has been chosen
+// Dataframes here must be construct with real_positions ; or at leasst sotmething containing "organization_name"
+def filterIfOrganizationDefined(df:org.apache.spark.sql.DataFrame, organization_name:String):org.apache.spark.sql.DataFrame = {
+        if(organization_name != "%" && organization_name != ""){
+                return df.where(
+                $"organization_name" === organization_name
+            
+                               )
+    
+        }
+    return df
+
+}
+
+// Filter by subject anme if one has been chosen
+// Dataframes here must be construct with real_positions ; or at leasst sotmething containing "organization_name"
+def filterIfSubjectDefined(df:org.apache.spark.sql.DataFrame, subject_name:String):org.apache.spark.sql.DataFrame = {
+        if(subject_name != "%" && subject_name != ""){
+        return df.where($"subject_name" === subject_name)
+    
+        }
+    return df
+
+}
+
+
+// Group By
+def groupByIfDefined(df:org.apache.spark.sql.DataFrame, group_type:String, number_min:String):org.apache.spark.sql.DataFrame = {
+        if(group_type != "%" && group_type != ""){
+        return df.groupBy(group_type).count().filter($"count" >= number_min).orderBy($"count".desc)
+    
+        }
+    return df
+
+}
+--
+
+// Var for dropDownLists
+
+// Subjects
+var dropDownList_subjects_seq = Seq(("%", "Tous"))
+returnTableFromSubjectRange("Positions grouped by subjects").orderBy("subject_name").collect().foreach( 
+    row => { 
+        var dropDownList_subject_name = (row.toSeq)(0).toString()
+        dropDownList_subjects_seq = dropDownList_subjects_seq :+ (dropDownList_subject_name, dropDownList_subject_name)
+     }
+ )
+
+// Organziations
+var dropDownList_organiations_seq = Seq(("%", "Toutes"))
+returnTableFromSubjectRange("Positions grouped by organizations").orderBy("organization_name").collect().foreach( 
+    row => { 
+        var dropDownList_organization_name = (row.toSeq)(0).toString()
+        dropDownList_organiations_seq = dropDownList_organiations_seq :+ (dropDownList_organization_name, dropDownList_organization_name)
+     }
+ )
+--
+%md ## 2.Nombre d'organisations s'étant exprimées après la date donnée.
+Le nombre d'organisations ayant pris une position dans la base de donnée.
+--
+// Just counting the number of line of that table gives ur the number of organisations that actually expressed themselves during that perido of time.
+println(grouped_positions_by_organizations.count())
+--
+%md ## 3.Nombre de sujets abordés après la date donnée.
+--
+println(
+                returnTableFromSubjectRange(
+            "Positions grouped by subjects"
+        
+                        ).count()
+
+       )
+--
+%md ## 4.Positions par sujet, après la date renseignée.
+--
+//Choose the subject Id by its name
+var positions_subject_name = z.select("Nom du sujet :", dropDownList_subjects_seq).toString()
+--
+%md #### 4.1 Nombre de positions par sujet.
+--
+makeTable(
+                filterIfSubjectDefined(
+                        returnTableFromSubjectRange(
+            "Positions grouped by subjects"
+        
+                                ),
+        positions_subject_name
+    
+        ).limit(
+        max_number_of_answers 
+    
+               )
+
+         )
+--
+%md #### 4.2 Timeline des _prises de positions_ sur un sujet
+
+_Attention_ : Une prise de position n'es tpas une position. Elle concerne une organisation s'exprimant sur un sujet. Une position possédant 2 organisations co-signataires et 2 sujets créera 4 prises de position.
+--
+makeTable(
+                filterIfSubjectDefined(
+                        returnTableFromSubjectRange(
+            "Date filtered positions"
+        
+                                ),
+        positions_subject_name
+    
+        ).select(
+        "publication_date",
+        "title",
+        "subject_name",
+        "organization_name"
+    
+        ).limit(
+        max_number_of_answers 
+    
+               )
+
+         )
+--
+%md ## 5.Nombre de positions par organisation, après la date renseignée.
+--
+// Choose the organization Id by its name
+var positions_organization_name = z.select("Nom de l'organisation :","%", dropDownList_organiations_seq).toString()
+--
+makeTable(
+                filterIfOrganizationDefined(
+                        returnTableFromSubjectRange(
+            "Positions grouped by organizations"
+        
+                                ),
+        positions_organization_name
+    
+        ).limit(
+        max_number_of_answers    
+    
+               )
+
+         )
+--
+%md ## 6.Sujets possédant un minimum de X position(s) publiées.
+--
+var subject_minimum_number_of_positions = z.input("Ayant au minimum", 0).toString.toInt
+--
+%md #### 6.1 Nombre
+--
+println(
+                returnTableFromSubjectRange(
+        "Positions grouped by subjects"
+    
+        ).where(
+        $"count" >= subject_minimum_number_of_positions
+    
+               ).count()
+
+       )
+--
+%md #### 6.2 Détail
+--
+makeTable(
+                returnTableFromSubjectRange(
+        "Positions grouped by subjects"
+    
+        ).where(
+        $"count" >= subject_minimum_number_of_positions
+    
+        ).limit(
+        max_number_of_answers    
+    
+               )
+
+         )
+--
+%md ## 7.Sujets les plus actifs sur une période de temps.
+_Attention_ Le compte est fait sur des prises de position et non des positions.
+--
+var period_start = z.input("Début de la période", "2015-01-01 00:00:00.0")
+var period_end = z.input("Fin de la période", "2015-01-03 00:00:00.0")
+--
+makeTable(
+                returnTableFromSubjectRange(
+        "Unfiltered positions"
+    
+        ).where(
+        $"publication_date" > period_start
+    
+        ).where(
+        $"publication_date" < period_end
+    
+               ).groupBy("subject_name").count().orderBy($"count".desc)
+
+         )
+--
+%md ## 8 Organisations possédant au moins un certain nombre de positions publiées.
+--
+var organization_minimum_number_of_positions = z.input("Ayant au minimum", 0).toString.toInt
+--
+%md #### 8.1 Nombre
+--
+println(
+                returnTableFromSubjectRange(
+        "Positions grouped by organizations"
+    
+        ).where(
+        $"count" >= organization_minimum_number_of_positions
+    
+               ).count()
+
+       )
+--
+%md #### 8.2 Détail
+--
+makeTable(
+                returnTableFromSubjectRange(
+        "Positions grouped by organizations"
+    
+        ).where(
+        $"count" >= organization_minimum_number_of_positions
+    
+        ).limit(
+        max_number_of_answers    
+    
+               )
+
+         )
+--
+%md ## 9 Liste des sujets sur lesquels s'est exprimée une organisation
+--
+// Choose the organization name
+var subject_list_organization_name = z.select("Nom de l'organisation :", dropDownList_organiations_seq).toString()
+--
+%md #### 9.1 Nombre
+--
+println(
+                filterIfOrganizationDefined(
+        returnTableFromSubjectRange("Subject and organization"),
+        subject_list_organization_name
+    
+                        ).count()
+
+       )
+--
+%md #### 9.2 Détail
+--
+makeTable(
+                filterIfOrganizationDefined(
+        returnTableFromSubjectRange("Subject and organization"),
+        subject_list_organization_name
+    
+        ).select(
+        "subject_name"
+    
+        ).orderBy(
+        "subject_name"    
+    
+        ).limit(
+        max_number_of_answers 
+    
+               )
+
+         )
+--
+%md ## 10 Liste des organisations à s'être exprimées sur un sujet
+--
+//Choose the subject name
+var organization_list_subject_name = z.select("Nom du sujet :", dropDownList_subjects_seq).toString()
+--
+%md #### 10.1 Nombre
+--
+println(
+                filterIfSubjectDefined(
+        returnTableFromSubjectRange("Subject and organization"),
+         organization_list_subject_name
+    
+                        ).count()
+
+       )
+--
+%md #### 10.2 Détail
+--
+makeTable(
+                filterIfSubjectDefined(
+        returnTableFromSubjectRange("Subject and organization"),
+         organization_list_subject_name
+    
+         ).select(
+        "organization_name"    
+    
+        ).orderBy(
+        "organization_name"    
+    
+        ).limit(
+        max_number_of_answers 
+    
+               )
+
+         )
+--
+%md ## 11 Organisations qui se sont exprimées sur au moins un certain nombre de sujets.
+--
+var organizations_minimum_number_of_subjects = z.input("Ayant au minimum", 0).toString.toInt
+--
+%md #### 11.1 Nombre
+--
+println(
+                returnTableFromSubjectRange(
+        "Subject and organization"
+    
+        ).groupBy(
+        "organization_name"    
+    
+        ).count().where(
+        $"count" >= organizations_minimum_number_of_subjects
+    
+                ).distinct.count()
+
+       )
+
+// Si ce chiffre est différent du nombre d'organisations totales dans la base vu plus haut, c'est qu'il y a des doublons au niveau des noms d'organisations.
+--
+%md #### 11.2 Détail
+--
+makeTable(
+                returnTableFromSubjectRange(
+        "Subjects grouped by organizations"
+    
+        ).where(
+        $"count" >= organizations_minimum_number_of_subjects
+    
+        ).orderBy(
+        $"count".desc
+    
+        ).limit(
+        max_number_of_answers    
+    
+               )
+
+         )
+--
+%md ## 12 Organisations avec le plus de sujets en commun
+--
+makeTable(
+                returnTableFromSubjectRange(
+        "Organizations relation"
+    
+        ).groupBy(
+        $"organization_name",
+        $"s_organization_name"
+    
+        ).agg(
+        $"organization_name",
+        count("subject_name"),
+        $"s_organization_name"
+    
+        ).orderBy(
+        $"COUNT(subject_name)".desc,
+        $"organization_name"
+    
+        ).limit(
+        max_number_of_answers
+    
+               )
+
+         )
+--
+%md ## 13 Organisations qui s'expriment sur les même sujets qu'une autre organisation.
+
+Si toutes les organisations sont recherchées, renvoie le même résultat que le précédent outil.
+Dans le cas où une organisation spécifique est recherchée, donne le nombre de sujets en commun pour chaque organisation liée à celle recherchée.
+
+#### _Problème concernant les organisations quand on les cherche toutes ; regarder._
+--
+var find_subject_linked_organizations_to_this_organization_name = z.select("Nom de l'organisation :", dropDownList_organiations_seq).toString()
+--
+makeTable(
+                filterIfOrganizationDefined(
+                        returnTableFromSubjectRange(
+                    "Organizations relation"
+                
+                                ),
+                find_subject_linked_organizations_to_this_organization_name
+            
+                ).groupBy(
+        $"organization_name",
+        $"s_organization_name"
+    
+        ).agg(
+        $"organization_name",
+        count("subject_name"),
+        $"s_organization_name"
+    
+        ).orderBy(
+        $"COUNT(subject_name)".desc,
+        $"organization_name"
+    
+        ).limit(
+        max_number_of_answers
+    
+        ).select(
+        "s_organization_name",
+        "COUNT(subject_name)"
+    
+                )
+
+         )
+--
+%md ## 14 Sur quels sujets s'expriment aussi les organisations qui s'expriment un certain sujet ? 
+--
+var find_organization_linked_subject_subject_name = z.select("Nom du sujet :", dropDownList_subjects_seq).toString()
+--
+makeTable(
+                returnTableFromSubjectRange(
+        "Subject relation"
+    
+        ).where(
+        $"first_subject_name" === find_organization_linked_subject_subject_name
+    
+        ).select(
+        "organization_name",
+        "subject_name"
+    
+        ).groupBy(
+        $"subject_name"    
+    
+        ).count().orderBy(
+        $"count".desc
+    
+        ).limit(
+        max_number_of_answers    
+    
+               )
+
+         )
